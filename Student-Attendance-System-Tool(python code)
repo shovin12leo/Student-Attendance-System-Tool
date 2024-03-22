@@ -1,0 +1,77 @@
+from flask import Flask, render_template, request, send_file
+from io import BytesIO
+import xlsxwriter
+
+app = Flask(__name__)
+
+students = []
+attendance_records = {}
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    file = request.files['file']
+    if file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
+        read_students(file)
+        return render_template('students.html', students=students)
+    else:
+        return "Invalid file format. Please upload a .xlsx or .xls file."
+
+
+def read_students(file):
+    global students
+    workbook = open_workbook(file_contents=file.read())
+    sheet = workbook.sheet_by_index(0)
+    for row_num in range(1, sheet.nrows):
+        student_name = sheet.cell(row_num, 0).value
+        students.append({'name': student_name, 'rollNumber': row_num})
+
+
+@app.route('/mark_attendance', methods=['POST'])
+def mark_attendance():
+    roll_number = int(request.form['rollNumber'])
+    if roll_number <= len(students):
+        mark_attendance_for_roll(roll_number)
+        return render_template('attendance.html', attendance_records=attendance_records, students=students)
+    else:
+        return "Invalid roll number. Please select a valid roll number."
+
+
+def mark_attendance_for_roll(roll_number):
+    global attendance_records
+    date = str(datetime.datetime.now().date())
+    if date not in attendance_records:
+        attendance_records[date] = {}
+    attendance_records[date][roll_number] = True
+
+
+@app.route('/get_attendance')
+def get_attendance():
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output)
+    worksheet = workbook.add_worksheet('Attendance')
+
+    header_format = workbook.add_format({'bold': True})
+    worksheet.write_row(0, 0, ['Date', 'Roll No.', 'Student Name', 'Attendance'], header_format)
+
+    row = 1
+    for date, records in attendance_records.items():
+        for roll_number, present in records.items():
+            student = next((s for s in students if s['rollNumber'] == roll_number), None)
+            if student:
+                worksheet.write_row(row, 0, [date, roll_number, student['name'], 'Present' if present else 'Absent'])
+                row += 1
+
+    workbook.close()
+    output.seek(0)
+
+    return send_file(output, attachment_filename='attendance.xlsx', as_attachment=True)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
