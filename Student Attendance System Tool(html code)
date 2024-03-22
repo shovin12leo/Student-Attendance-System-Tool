@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Attendance</title>
+    <style>
+        /* Your existing CSS styles */
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Student Attendance System</h1>
+    <div class="input-section">
+        <label for="fileInput">Upload Student List (Excel):</label>
+        <input accept=".xlsx, .xls" id="fileInput" onchange="handleFile()" type="file"/>
+    </div>
+
+    <div class="student-inputs" id="studentInputs" style="display: none;">
+        <!-- Student input fields will be dynamically added here -->
+    </div>
+
+    <div class="attendance-section" style="display: none;">
+        <label for="rollNumber">Mark Attendance for Roll Number:</label>
+        <input id="rollNumber" max="100" min="1" type="number"/>
+        <button onclick="markAttendance()">Mark Attendance</button>
+    </div>
+
+    <div class="attendance-records" id="attendanceRecords" style="display: none;">
+        <!-- Attendance records will be displayed here -->
+    </div>
+
+    <div class="download-section" id="downloadSection" style="display: none;">
+        <button onclick="getAttendance()">Get Attendance</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.0/xlsx.full.min.js"></script>
+<script>
+    let students = [];
+    let attendanceRecords = {};
+
+    function handleFile() {
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+            students = jsonData.map((student, index) => {
+                return {name: student['Student Name'], rollNumber: index + 1};
+            });
+
+            displayStudents();
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    function displayStudents() {
+        const studentInputsDiv = document.getElementById('studentInputs');
+        studentInputsDiv.innerHTML = '<h2>Student List</h2>';
+
+        students.forEach((student, index) => {
+            studentInputsDiv.innerHTML += `<p>${index + 1}. ${student.name}</p>`;
+        });
+
+        const attendanceSection = document.querySelector('.attendance-section');
+        attendanceSection.style.display = 'block';
+    }
+
+    function markAttendance() {
+        const rollNumber = parseInt(document.getElementById('rollNumber').value, 10);
+        if (isNaN(rollNumber) || rollNumber <= 0) {
+            alert('Please enter a valid roll number.');
+            return;
+        }
+
+        const student = students.find(s => s.rollNumber === rollNumber);
+        if (!student) {
+            alert('Student with roll number ' + rollNumber + ' not found.');
+            return;
+        }
+
+        const date = new Date().toLocaleDateString();
+        if (!attendanceRecords[date]) {
+            attendanceRecords[date] = {};
+        }
+
+        attendanceRecords[date][rollNumber] = true;
+        displayAttendance();
+    }
+
+    function displayAttendance() {
+        const attendanceRecordsDiv = document.getElementById('attendanceRecords');
+        attendanceRecordsDiv.innerHTML = '<h2>Attendance Records</h2>';
+
+        Object.keys(attendanceRecords).forEach(date => {
+            attendanceRecordsDiv.innerHTML += `<p><strong>${date}</strong></p>`;
+            students.forEach(student => {
+                const status = attendanceRecords[date][student.rollNumber] ? 'Present' : 'Absent';
+                attendanceRecordsDiv.innerHTML += `<p>${student.rollNumber}: ${status}</p>`;
+            });
+        });
+
+        const downloadSection = document.getElementById('downloadSection');
+        downloadSection.style.display = 'block';
+    }
+
+    function getAttendance() {
+        const wsData = [['Date', 'Roll No.', 'Student Name', 'Attendance']];
+        Object.keys(attendanceRecords).forEach(date => {
+            students.forEach(student => {
+                const status = attendanceRecords[date][student.rollNumber] ? 'Present' : 'Absent';
+                wsData.push([date, student.rollNumber, student.name, status]);
+            });
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+
+        const wbout = XLSX.write(wb, {bookType: 'xlsx', type: 'binary'});
+
+        function s2ab(s) {
+            const buf = new ArrayBuffer(s.length);
+            const view = new Uint8Array(buf);
+            for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+            return buf;
+        }
+
+        const blob = new Blob([s2ab(wbout)], {type: 'application/octet-stream'});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'attendance.xlsx';
+        document.body.appendChild(a);
+        a.click();
+
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+</script>
+</body>
+</html>
